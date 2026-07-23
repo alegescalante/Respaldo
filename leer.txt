@@ -1,0 +1,89 @@
+No olvides otorgarles permisos de ejecución desde la terminal con:
+bash
+chmod +x backup_disco.sh backup_remoto.sh
+
+3. Automatización por las noches con CronPara hacer que los scripts se ejecuten solos todas las noches, utilizaremos el programador de tareas de Debian (cron).Abre el editor de tareas ejecutando en tu consola:
+bash
+crontab -e
+
+Ve al final del archivo que se abre y añade las siguientes dos líneas (ajusta las rutas hacia donde guardaste tus scripts):
+text
+0 2 * * * /ruta/exacta/donde/guardaste/backup_disco.sh
+0 3 * * * /ruta/exacta/donde/guardaste/backup_remoto.sh
+
+Explicación del horario: El primer script se ejecutará todas las noches a las 2:00 AM (0 2 * * *) y el segundo a las 3:00 AM (0 3 * * *). Dejamos una hora de diferencia para evitar que se saturen los discos o el ancho de banda al mismo tiempo.
+
+Configuración del servidor de correo local (Postfix)Para que el comando mail pueda enviar correos hacia el exterior (como Gmail, Outlook, etc.), Debian necesita un Agente de Transferencia de Correo (MTA). Configurarás Postfix como un "Relay", lo que significa que usará una cuenta de correo real existente para enviar los mensajes del sistema.
+
+Instalar las herramientas necesariasAbre la consola y ejecuta el siguiente comando para instalar Postfix y las utilidades de autenticación:
+bash
+sudo apt update && sudo apt install postfix mailutils libsasl2-modules -y
+
+Durante la instalación aparecerá una pantalla azul. Elige Sitio de Internet (Internet Site) y en "Nombre de sistema de correo" deja el nombre por defecto de tu máquina.
+
+Configurar las credenciales de salidaDebes indicarle a Debian qué cuenta de correo real y qué contraseña usará para realizar los envíos. Abre el archivo de contraseñas:
+
+bash
+sudo nano /etc/postfix/sasl_passwd
+
+Escribe una sola línea con los datos de tu proveedor. Por ejemplo, para Gmail:
+
+text
+[smtp.gmail.com]:587 tu_usuario@gmail.com:tu_contraseña_de_aplicacion
+
+Nota para Gmail/Outlook: No uses tu contraseña normal. Debes ir a la configuración de tu cuenta de Google, activar la "Verificación en dos pasos" y crear una Contraseña de aplicación dedicada).
+vsny jydn adju vkos
+
+Protege este archivo para que solo el sistema pueda leer tu contraseña:
+
+bash
+sudo chmod 600 /etc/postfix/sasl_passwd
+sudo postmap /etc/postfix/sasl_passwd
+
+Configurar el archivo maestro de PostfixAbre el archivo principal de configuración:
+
+bash
+sudo nano /etc/postfix/main.cf
+
+Ve al final del archivo y añade las siguientes líneas para enlazar el servidor SMTP de tu proveedor y activar la seguridad cifrada:
+
+text
+relayhost = [smtp.gmail.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = encrypt
+smtp_sasl_tls_security_options = noanonymous
+
+Reiniciar y probar el servicioAplica los cambios reiniciando Postfix:
+
+bash
+sudo systemctl restart postfix
+
+¡Es hora de probar si tu Debian ya sabe enviar correos! Ejecuta esto en tu consola sustituyendo tu dirección real:
+
+bash
+echo "Esta es una prueba de alerta desde Debian" | mail -s "Prueba Servidor Local" tu_email_personal@dominio.com
+
+Revisa tu bandeja de entrada (y la carpeta de SPAM). Si este correo de prueba llega correctamente, los scripts de respaldo automatizados ya están listos para notificarte cada noche en caso de éxito o fallo.
+
+Si los correos no llegan, avísame y podemos revisar el archivo de errores del sistema en /var/log/mail.log para encontrar el problema.
+
+Despues de corregir algun problema siempre realizar lo sigueinte:
+rm /etc/postfix/sasl_passwd.db
+postmap /etc/postfix/sasl_passwd
+systemctl restart postfix
+
+monitor:
+sudo journalctl -u postfix -n 20
+sudo journalctl -u postfix --since "1 hour ago"
+sudo journalctl -u postfix -f
+
+Solución: Fuerza a Postfix a cambiar el remitente genérico del sistema por tu correo real añadiendo esto al final de /etc/postfix/main.cf:textsmtp_generic_maps = hash:/etc/postfix/generic
+text
+smtp_generic_maps = hash:/etc/postfix/generic
+Crea el archivo de mapeo con sudo nano /etc/postfix/generic y escribe:
+text
+root tu_usuario@gmail.com
+tu_usuario_debian tu_usuario@gmail.com
+
